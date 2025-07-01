@@ -1,0 +1,7 @@
+[browser]
+serverAddress = "https://bankmarketingml-predictive-subscriber-a-appstreamlit-app-pgrayf.streamlit.app/"
+
+[server]
+port = 8501
+enableCORS = false
+enableXsrfProtection = false
