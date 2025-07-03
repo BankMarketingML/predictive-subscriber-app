@@ -5,10 +5,13 @@ import matplotlib.pyplot as plt
 import os
 import streamlit as st
 from sklearn.metrics import roc_curve, auc
+import numpy as np
+import pandas as pd
+
 
 def plot_roc(model, X, y):
     """
-    Génère et sauvegarde la courbe ROC pour un modèle donné
+    Génère et affiche la courbe ROC pour un modèle donné.
 
     Args:
         model: Le modèle entraîné (pipeline ou estimator)
@@ -16,58 +19,56 @@ def plot_roc(model, X, y):
         y: Données de test (target)
     """
     try:
-        st.info("Génération de la courbe ROC en cours...")
-        
-        # Si le modèle est un pipeline, récupérer le classifieur
-        if hasattr(model, 'named_steps') and 'clf' in model.named_steps:
-            model_to_use = model
-        else:
-            model_to_use = model
+        st.info("📊 Génération de la courbe ROC en cours...")
 
-        # Prédictions des probabilités
-        y_proba = model_to_use.predict_proba(X)[:, 1]
+        # Récupérer le classifieur si pipeline
+        model_to_use = model.named_steps['clf'] if hasattr(model, 'named_steps') and 'clf' in model.named_steps else model
+
+        if not hasattr(model_to_use, "predict_proba"):
+            st.warning("⚠️ Ce modèle ne supporte pas predict_proba. Courbe ROC non disponible.")
+            return
+
+        y_proba = model.predict_proba(X)[:, 1]
         fpr, tpr, _ = roc_curve(y, y_proba)
         roc_auc = auc(fpr, tpr)
 
-        # Tracer
-        plt.figure(figsize=(8, 6))
-        plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.2f}", color="darkorange")
-        plt.plot([0, 1], [0, 1], 'k--', lw=2)
-        plt.xlabel("Taux de faux positifs")
-        plt.ylabel("Taux de vrais positifs")
-        plt.title("Courbe ROC")
-        plt.legend(loc="lower right")
+        # Tracé
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.plot(fpr, tpr, color="darkorange", lw=2, label=f"AUC = {roc_auc:.2f}")
+        ax.plot([0, 1], [0, 1], color='navy', lw=1, linestyle='--')
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel("Taux de faux positifs")
+        ax.set_ylabel("Taux de vrais positifs")
+        ax.set_title("Courbe ROC")
+        ax.legend(loc="lower right")
 
-        # Sauvegarde
+        # Affichage Streamlit
+        st.pyplot(fig)
+
+        # Sauvegarde (optionnelle)
         os.makedirs("images", exist_ok=True)
-        plt.savefig("images/roc_curve.png", bbox_inches='tight', dpi=300)
-        plt.close()
-        st.success("Courbe ROC générée avec succès.")
-        st.image("images/roc_curve.png")
+        fig.savefig("images/roc_curve.png", bbox_inches='tight', dpi=300)
 
     except Exception as e:
-        st.error(f"Erreur dans la génération de la courbe ROC : {str(e)}")
+        st.error(f"❌ Erreur lors de la génération de la courbe ROC : {str(e)}")
         raise
 
 
 def shap_analysis(model, X, max_display=20):
     """
-    Effectue l'analyse SHAP et sauvegarde/génère les visualisations
-    
+    Effectue l'analyse SHAP et affiche un beeswarm plot.
+
     Args:
-        model: Le modèle sklearn/pipeline entraîné
+        model: Modèle entraîné ou pipeline
         X: DataFrame ou ndarray contenant les features
-        max_display: Nombre max de features à afficher
+        max_display: Nombre maximum de variables à afficher
     """
-    import numpy as np
-    import pandas as pd
-
     try:
-        st.info("Calcul des valeurs SHAP en cours...")
+        st.info("🧠 Calcul des valeurs SHAP...")
 
-        # Si X est un ndarray, convertir en DataFrame
+        # Convertir X si nécessaire
         if isinstance(X, np.ndarray):
-            # Si le modèle est un pipeline avec un préprocesseur, on peut essayer de récupérer les noms de colonnes
             feature_names = None
             if hasattr(model, "named_steps") and "preprocessor" in model.named_steps:
                 preproc = model.named_steps["preprocessor"]
@@ -77,33 +78,33 @@ def shap_analysis(model, X, max_display=20):
         else:
             X_df = X
 
-        # Vérification du type de modèle
-        if hasattr(model, 'named_steps') and 'clf' in model.named_steps:
-            model_to_explain = model.named_steps['clf']
-        else:
-            model_to_explain = model
+        # Extraire modèle interne
+        model_to_explain = model.named_steps['clf'] if hasattr(model, 'named_steps') and 'clf' in model.named_steps else model
 
-        # Création de l'explainer adapté au modèle
-        if str(type(model_to_explain)).endswith("LogisticRegression'>"):
+        # Sélection de l'explainer
+        model_type = str(type(model_to_explain))
+        if "LogisticRegression" in model_type:
             explainer = shap.LinearExplainer(model_to_explain, X_df)
+        elif "Tree" in model_type or "Forest" in model_type or "Boosting" in model_type:
+            explainer = shap.Explainer(model_to_explain, X_df)
         else:
             explainer = shap.Explainer(model_to_explain, X_df)
 
-        # Échantillonnage pour vitesse
         sample = X_df.sample(min(100, len(X_df)), random_state=42)
         shap_values = explainer(sample)
 
-        # Visualisation
-        st.success("Génération des graphiques SHAP")
+        st.success("✅ SHAP valeurs calculées. Génération du graphe...")
+
+        # Tracé
         plt.figure(figsize=(10, 6))
         shap.plots.beeswarm(shap_values, max_display=max_display, show=False)
         plt.tight_layout()
 
-        # Sauvegarde
+        # Sauvegarde et affichage
         os.makedirs("images", exist_ok=True)
         plt.savefig("images/shap_plot.png", bbox_inches='tight', dpi=300)
         st.image("images/shap_plot.png")
 
     except Exception as e:
-        st.error(f"Erreur dans l'analyse SHAP : {str(e)}")
+        st.error(f"❌ Erreur dans l'analyse SHAP : {str(e)}")
         raise
