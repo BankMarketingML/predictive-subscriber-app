@@ -8,3 +8,4 @@ seaborn
 imblearn
 joblib
 streamlit-dynamic-filters
+plotly>=5.0.0
