@@ -1,5 +1,3 @@
-# preprocessing/data_preprocessing.py
-
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -13,6 +11,7 @@ def preprocess_data(df, fit_preprocessor=None):
     - Si fit_preprocessor est fourni, transform uniquement (test)
     Retourne : X_processed (numpy array), y (Series ou None), preprocessor
     """
+
     # Séparation X / y si la colonne 'y' existe
     if 'y' in df.columns:
         y = df['y']
@@ -26,12 +25,14 @@ def preprocess_data(df, fit_preprocessor=None):
     cat_cols = X.select_dtypes(include=['object', 'bool']).columns.tolist()
 
     transformers = []
+
     if num_cols:
         numeric_transformer = Pipeline([
             ('imputer', SimpleImputer(strategy='median')),
             ('scaler', StandardScaler())
         ])
         transformers.append(('num', numeric_transformer, num_cols))
+
     if cat_cols:
         categorical_transformer = Pipeline([
             ('imputer', SimpleImputer(strategy='most_frequent')),
@@ -39,8 +40,13 @@ def preprocess_data(df, fit_preprocessor=None):
         ])
         transformers.append(('cat', categorical_transformer, cat_cols))
 
+    # Construction du preprocessor uniquement si des colonnes existent
+    if not transformers:
+        raise ValueError("Aucune colonne numérique ou catégorielle détectée pour le prétraitement.")
+
     preprocessor = ColumnTransformer(transformers)
 
+    # Fit + transform ou uniquement transform
     if fit_preprocessor is None:
         X_processed = preprocessor.fit_transform(X)
         return X_processed, y, preprocessor

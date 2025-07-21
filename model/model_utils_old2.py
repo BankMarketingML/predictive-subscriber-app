@@ -1,7 +1,5 @@
 # model_utils.py
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from xgboost import XGBClassifier
+
 import shap
 import matplotlib.pyplot as plt
 import os
@@ -59,48 +57,54 @@ def plot_roc(model, X, y):
 
 def shap_analysis(model, X, max_display=20):
     """
-    Version corrigée pour gérer tous les types de modèles
+    Effectue l'analyse SHAP et affiche un beeswarm plot.
+
+    Args:
+        model: Modèle entraîné ou pipeline
+        X: DataFrame ou ndarray contenant les features
+        max_display: Nombre maximum de variables à afficher
     """
     try:
-        # 1. Préparation des données
+        st.info("Calcul des valeurs SHAP...")
+
+        # Convertir X si nécessaire
         if isinstance(X, np.ndarray):
-            feature_names = model[:-1].get_feature_names_out() if hasattr(model, 'named_steps') else None
-            X_df = pd.DataFrame(X, columns=feature_names)
+            feature_names = None
+            if hasattr(model, "named_steps") and "preprocessor" in model.named_steps:
+                preproc = model.named_steps["preprocessor"]
+                if hasattr(preproc, "get_feature_names_out"):
+                    feature_names = preproc.get_feature_names_out()
+            X_df = pd.DataFrame(X, columns=feature_names) if feature_names is not None else pd.DataFrame(X)
         else:
-            X_df = X.copy()
+            X_df = X
 
-        # 2. Extraction du modèle final du pipeline
-        if hasattr(model, 'named_steps'):
-            model_to_explain = model.named_steps.get('classifier') or model.named_steps.get('clf') or model
-        else:
-            model_to_explain = model
+        # Extraire modèle interne
+        model_to_explain = model.named_steps['clf'] if hasattr(model, 'named_steps') and 'clf' in model.named_steps else model
 
-        # 3. Sélection de l'explainer adapté
-        plt.ioff()  # Désactive les affichages parasites
-        
-        if isinstance(model_to_explain, LogisticRegression):
-            # Solution spécifique pour LogisticRegression
-            explainer = shap.LinearExplainer(
-                model_to_explain,
-                shap.sample(X_df, 100),  # Échantillon de référence
-                feature_perturbation="interventional"
-            )
-        elif 'tree' in str(type(model_to_explain)).lower():
-            explainer = shap.TreeExplainer(model_to_explain)
+        # Sélection de l'explainer
+        model_type = str(type(model_to_explain))
+        if "LogisticRegression" in model_type:
+            explainer = shap.LinearExplainer(model_to_explain, X_df)
+        elif "Tree" in model_type or "Forest" in model_type or "Boosting" in model_type:
+            explainer = shap.Explainer(model_to_explain, X_df)
         else:
             explainer = shap.Explainer(model_to_explain, X_df)
 
-        # 4. Calcul des valeurs SHAP
         sample = X_df.sample(min(100, len(X_df)), random_state=42)
         shap_values = explainer(sample)
 
-        # 5. Création du plot
-        fig, ax = plt.subplots(figsize=(10, 6))
+        st.success("SHAP valeurs calculées. Génération du graphe...")
+
+        # Tracé
+        plt.figure(figsize=(8, 6))
         shap.plots.beeswarm(shap_values, max_display=max_display, show=False)
         plt.tight_layout()
 
-        return fig
+        # Sauvegarde et affichage
+        os.makedirs("images", exist_ok=True)
+        plt.savefig("images/shap_plot.png", bbox_inches='tight', dpi=300)
+        st.image("images/shap_plot.png")
 
     except Exception as e:
-        st.error(f"Erreur SHAP : {str(e)}")
-        return None
+        st.error(f"Erreur dans l'analyse SHAP : {str(e)}")
+        raise
