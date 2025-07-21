@@ -9,3 +9,4 @@ imblearn
 joblib
 streamlit-dynamic-filters
 plotly>=5.0.0
+xgboost>=1.7.0
